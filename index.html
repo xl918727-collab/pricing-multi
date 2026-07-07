@@ -141,7 +141,7 @@ tr.total td { border-top:2px solid #eab308; }
 <div class="fg"><label>广告费 <span class="u">%</span></label><input type="number" id="ad" class="auto" step="0.1" placeholder="自动"><span id="adMom" class="mom-tag"></span></div>
 <div class="fg"><label>仓储费 <span class="u">%</span></label><input type="number" id="storage" class="auto" step="0.1" placeholder="自动"><span id="storageMom" class="mom-tag"></span></div>
 <div class="fg"><label>退款损失 <span class="u">%</span></label><input type="number" id="refund" class="auto" step="0.1" placeholder="自动"><span id="refundMom" class="mom-tag"></span></div>
-<div class="fg"><label>VAT税费 <span class="u">%</span></label><input type="number" id="vat" class="auto" step="0.1" placeholder="自动"><span id="vatMom" class="mom-tag"></span></div>
+<div class="fg"><label>VAT税费 <span class="u">%（按国家默认）</span></label><input type="number" id="vat" class="auto" step="0.1" placeholder="自动"><span id="vatMom" class="mom-tag"></span></div>
 <div class="fg"><label>报损盘亏 <span class="u">%</span></label><input type="number" id="loss" class="auto" step="0.1" placeholder="自动"><span id="lossMom" class="mom-tag"></span></div>
 <div class="fg"><label>费用调整 <span class="u">%</span></label><input type="number" id="adj" class="auto" step="0.1" placeholder="自动"><span id="adjMom" class="mom-tag"></span></div>
 <div class="fg"><label>其他费用(固定) <span class="u cost-label">$</span></label><input type="number" id="otherFee" step="0.01" value="0" placeholder="0"></div>
@@ -179,7 +179,7 @@ tr.total td { border-top:2px solid #eab308; }
 <div class="fg"><label>广告费 <span class="u">%</span></label><input type="number" id="newAd" class="auto" step="0.1" placeholder="自动估算"></div>
 <div class="fg"><label>仓储费 <span class="u">%</span></label><input type="number" id="newStor" class="auto" step="0.1" placeholder="自动估算"></div>
 <div class="fg"><label>退款损失 <span class="u">%</span></label><input type="number" id="newRefund" class="auto" step="0.1" placeholder="自动估算"></div>
-<div class="fg"><label>VAT税费 <span class="u">%</span></label><input type="number" id="newVat" class="auto" step="0.1" placeholder="自动估算"></div>
+<div class="fg"><label>VAT税费 <span class="u">%（按国家默认）</span></label><input type="number" id="newVat" class="auto" step="0.1" placeholder="自动估算"></div>
 <div class="fg"><label>报损盘亏 <span class="u">%</span></label><input type="number" id="newLoss" class="auto" step="0.1" placeholder="自动估算"></div>
 <div class="fg"><label>费用调整 <span class="u">%</span></label><input type="number" id="newAdj" class="auto" step="0.1" placeholder="自动估算"></div>
 <div class="fg"><label>其他费用(固定) <span class="u cost-label">$</span></label><input type="number" id="newOtherFee" step="0.01" value="0" placeholder="0"></div>
@@ -528,7 +528,7 @@ function onSiteChange() {
   setAuto('ad', entry.ad_pct, entry, 'ad_pct', 'pct');
   setAuto('storage', entry.storage_pct, entry, 'storage_pct', 'pct');
   setAuto('refund', entry.refund_pct, entry, 'refund_pct', 'pct');
-  setAuto('vat', entry.vat_pct, entry, 'vat_pct', 'pct');
+  setAuto('vat', VAT_RATES[site] || entry.vat_pct, entry, 'vat_pct', 'pct');
   setAuto('loss', entry.loss_pct, entry, 'loss_pct', 'pct');
   setAuto('adj', entry.adj_pct, entry, 'adj_pct', 'pct');
 }
@@ -688,6 +688,11 @@ function calcNewProduct() {
   if (wt <= 0) { toast('请填写产品重量'); return; }
   if (cogs <= 0) { toast('请填写平均采购成本'); return; }
   if (firstLeg <= 0) { toast('请填写头程成本'); return; }
+
+  var vatEl = document.getElementById('newVat');
+  if (!vatEl.value || parseFloat(vatEl.value) === 0) {
+    vatEl.value = VAT_RATES[site] || 0;
+  }
 
   var inputVol = len * wid * hei;
 
