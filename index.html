@@ -418,6 +418,12 @@ var skuDropdown = document.getElementById('skuDropdown');
 var selectedSku = null;
 var activeIdx = -1;
 
+// Precompute display names for each SKU
+var skuNames = {};
+Object.keys(skuMap).forEach(function(s) {
+  skuNames[s] = skuMap[s].map(function(d){return d.name;}).filter(function(v,i,a){return a.indexOf(v)===i&&v;}).join(' / ');
+});
+
 function renderDropdown(filter) {
   var matches = allSkus.filter(function(s) { return s.toUpperCase().indexOf(filter.toUpperCase()) !== -1; });
   skuDropdown.innerHTML = '';
@@ -431,7 +437,7 @@ function renderDropdown(filter) {
     var s = matches[i];
     var div = document.createElement('div');
     div.className = 'combo-item';
-    var names = skuMap[s].map(function(d){return d.name;}).filter(function(v,i,a){return a.indexOf(v)===i&&v;}).join(' / ');
+    var names = skuNames[s] || '';
     div.innerHTML = '<span class="sku-code">' + s + '</span><span class="sku-cat">' + names + '</span>';
     div.dataset.sku = s;
     div.addEventListener('mousedown', function(e) { selectSku(this.dataset.sku); });
@@ -447,18 +453,21 @@ function renderDropdown(filter) {
 }
 
 function selectSku(sku) {
-  selectedSku = sku;
   skuInput.value = sku;
+  selectedSku = sku;
   skuDropdown.classList.remove('show');
   onSkuChange();
 }
 
+var renderTimer = null;
 skuInput.addEventListener('input', function() {
+  if (selectedSku && skuInput.value === selectedSku) return;
   selectedSku = null;
   clearAutoFields();
   document.getElementById('skuInfo').style.display='none';
   document.getElementById('siteSel').innerHTML='<option value="">-- 先选SKU --</option>';
-  renderDropdown(skuInput.value);
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(function() { renderDropdown(skuInput.value); }, 100);
 });
 
 skuInput.addEventListener('focus', function() {
@@ -586,9 +595,11 @@ function calc() {
   var otherFee = parseFloat(document.getElementById('otherFee').value) || 0;
   var profit = parseFloat(document.getElementById('profit').value) || 0;
   if (cogs <= 0) { toast('采购成本不能为0'); return; }
-  var totalPct = (commission + ad + storage + refund + vat + loss + adj + otherPct + profit) / 100;
-  if (totalPct >= 1) { toast('费用占比+利润率超过100%，无法计算'); return; }
-  var sp = (cogs + firstLeg + delivery) / (1 - totalPct) + otherFee;
+  var vatRate = VAT_RATES[site] || 0;
+  var nonVatPct = (commission + ad + storage + refund + loss + adj + otherPct + profit) / 100;
+  if (nonVatPct >= 1) { toast('费用占比+利润率超过100%，无法计算'); return; }
+  var baseSp = (cogs + firstLeg + delivery) / (1 - nonVatPct) + otherFee;
+  var sp = baseSp * (1 + vatRate / 100);
   document.getElementById('finalPrice').innerHTML = sp.toFixed(2) + (entry ? momSp(sp, entry) : '');
   // Calculate previous month SP for MoM comparison
   if (entry && entry._has_prev && !entry._prevSPCalculated) {
@@ -597,7 +608,8 @@ function calc() {
     var prevFirst = entry.first_leg_pu - (entry.mom.first_leg_pu||0);
     var prevDel = entry.delivery_pu - (entry.mom.delivery_pu||0);
     if (prevCogs > 0 && prevFirst > 0) {
-      entry._prevSP = (prevCogs + prevFirst + prevDel) / (1 - totalPct) + otherFee;
+      entry._prevSP = (prevCogs + prevFirst + prevDel) / (1 - nonVatPct) + otherFee;
+      if (vatRate > 0) entry._prevSP *= (1 + vatRate / 100);
     }
     entry._prevSPCalculated = true;
   }
@@ -619,9 +631,9 @@ function calc() {
   var refAmt = sp*refund/100;
   document.getElementById('rRefund').textContent = refAmt.toFixed(2);
   document.getElementById('rRefundP').textContent = refund.toFixed(1)+'%';
-  var vatAmt = sp*vat/100;
+  var vatAmt = baseSp * vatRate / 100;
   document.getElementById('rVat').textContent = vatAmt.toFixed(2);
-  document.getElementById('rVatP').textContent = vat.toFixed(1)+'%';
+  document.getElementById('rVatP').textContent = vatRate.toFixed(1)+'%';
   var lossAmt = sp*loss/100;
   document.getElementById('rLoss').textContent = lossAmt.toFixed(2);
   document.getElementById('rLossP').textContent = loss.toFixed(1)+'%';
@@ -783,9 +795,11 @@ function calcNewProduct() {
   var localFirstLeg = firstLeg * siteFx / cnyFx;
   var localDelivery = estDelivery * siteFx;
 
-  var totalPct = (estComm + estAd + estStor + estRefund + estVat + estLoss + estAdj + otherPct + profit) / 100;
-  if (totalPct >= 1) { toast('费用占比+利润率超过100%，无法计算'); return; }
-  var sp = (localCogs + localFirstLeg + localDelivery) / (1 - totalPct);
+  var vatRate2 = VAT_RATES[site] || 0;
+  var nonVatPct2 = (estComm + estAd + estStor + estRefund + estLoss + estAdj + otherPct + profit) / 100;
+  if (nonVatPct2 >= 1) { toast('费用占比+利润率超过100%，无法计算'); return; }
+  var baseSp2 = (localCogs + localFirstLeg + localDelivery) / (1 - nonVatPct2);
+  var sp = baseSp2 * (1 + vatRate2 / 100);
   var curSym = CURRENCY[site] || '';
 
   document.getElementById('newFinalPrice').textContent = curSym + ' ' + sp.toFixed(2);
@@ -856,8 +870,9 @@ function loadNewProductList() {
     var localCogs = p.cogs * siteFx / cnyFx;
     var localFirstLeg = p.firstLeg * siteFx / cnyFx;
     var localDelivery = p.estDelivery * siteFx;
-    var totalPct = ((p.comm||0) + (p.ad||0) + (p.stor||0) + (p.refund||0) + (p.vat||0) + (p.loss||0) + (p.adj||0) + (p.otherPct||0) + (p.profit||0)) / 100;
-    var sp = totalPct >= 1 ? 0 : (localCogs + localFirstLeg + localDelivery) / (1 - totalPct);
+    var vatRate2 = VAT_RATES[p.site] || 0;
+    var nonVatPct2 = ((p.comm||0) + (p.ad||0) + (p.stor||0) + (p.refund||0) + (p.loss||0) + (p.adj||0) + (p.otherPct||0) + (p.profit||0)) / 100;
+    var sp = nonVatPct2 >= 1 ? 0 : (localCogs + localFirstLeg + localDelivery) / (1 - nonVatPct2) * (1 + vatRate2 / 100);
     var spLocal = sp > 0 ? sp.toFixed(2) : '--';
     var cur = CURRENCY[p.site] || '';
     return '<div class="info-row" style="cursor:pointer;align-items:center">' +
